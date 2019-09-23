@@ -6,6 +6,7 @@
 class Program {
 
 public:
-	void start();
+	void testPointToIndex();
+	void testIndexToRange();
 };
 

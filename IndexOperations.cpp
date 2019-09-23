@@ -16,10 +16,11 @@ std::ostream& operator<<(std::ostream& os, const Range& r) {
 	return os;
 }
 
-enum SdogCellType {
+enum class SdogCellType {
 	SG,
 	LG,
-	NG
+	NG,
+	INVALID
 };
 
 
@@ -137,6 +138,14 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 
 Range SimpleOperations::indexToRange(Index index) const {
 
+	// Find width of index
+	int width;
+	for (width = INDEX_WIDTH - 1; width >= 0; width--) {
+		if (index[width] == 1) {
+			break;
+		}
+	}
+
 	Range r;
 	r.radMin = 0.0;
 	r.radMax = GRID_RAD;
@@ -145,132 +154,140 @@ Range SimpleOperations::indexToRange(Index index) const {
 	r.lngMin = 0.0;
 	r.lngMax = M_PI_2;
 
-	//// Loop for each char in code and determine properties based on code
-	//SdogCellType type = SdogCellType::SG;
-	//for (unsigned int i = 1; i < code.length(); i++) {
+	int k = width / 3;
 
-	//	double midLat = 0.5 * minLat + 0.5 * maxLat;
-	//	double midLong = 0.5 * minLong + 0.5 * maxLong;
-	//	double midRad = 0.5 * minRad + 0.5 * maxRad;
+	// Loop for each char in code and determine properties based on code
+	SdogCellType type = SdogCellType::SG;
+	for (int i = width - 1; i >= 0; i -= 3) {
 
-	//	if (type == SdogCellType::NG) {
+		Index levelI;
+		levelI[2] = index[i];
+		levelI[1] = index[i - 1];
+		levelI[0] = index[i - 2];
+		int code = levelI.to_ulong();
 
-	//		if (code[i] == '0') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			maxLong = midLong;
-	//		}
-	//		else if (code[i] == '1') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			minLong = midLong;
-	//		}
-	//		else if (code[i] == '2') {
-	//			minRad = midRad;
-	//			minLat = midLat;
-	//			maxLong = midLong;
-	//		}
-	//		else if (code[i] == '3') {
-	//			minRad = midRad;
-	//			minLat = midLat;
-	//			minLong = midLong;
-	//		}
-	//		else if (code[i] == '4') {
-	//			maxRad = midRad;
-	//			maxLat = midLat;
-	//			maxLong = midLong;
-	//		}
-	//		else if (code[i] == '5') {
-	//			maxRad = midRad;
-	//			maxLat = midLat;
-	//			minLong = midLong;
-	//		}
-	//		else if (code[i] == '6') {
-	//			maxRad = midRad;
-	//			minLat = midLat;
-	//			maxLong = midLong;
-	//		}
-	//		else if (code[i] == '7') {
-	//			maxRad = midRad;
-	//			minLat = midLat;
-	//			minLong = midLong;
-	//		}
-	//		else {
-	//			type = SdogCellType::INVALID;
-	//			break;
-	//		}
-	//		// type doesn't change
-	//	}
-	//	else if (type == SdogCellType::LG) {
+		double midLat = 0.5 * r.latMin + 0.5 * r.latMax;
+		double midLong = 0.5 * r.lngMin + 0.5 * r.lngMax;
+		double midRad = 0.5 * r.radMin + 0.5 * r.radMax;
 
-	//		if (code[i] == '0') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			maxLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '1') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			minLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '2') {
-	//			minRad = midRad;
-	//			minLat = midLat;
-	//			// type doesn't change
-	//		}
-	//		else if (code[i] == '3') {
-	//			maxRad = midRad;
-	//			maxLat = midLat;
-	//			maxLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '4') {
-	//			maxRad = midRad;
-	//			maxLat = midLat;
-	//			minLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '5') {
-	//			maxRad = midRad;
-	//			minLat = midLat;
-	//			// type doesn't change
-	//		}
-	//		else {
-	//			type = SdogCellType::INVALID;
-	//			break;
-	//		}
-	//	}
-	//	else {// type == CellType::SG
+		if (type == SdogCellType::NG) {
 
-	//		if (code[i] == '0') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			maxLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '1') {
-	//			minRad = midRad;
-	//			maxLat = midLat;
-	//			minLong = midLong;
-	//			type = SdogCellType::NG;
-	//		}
-	//		else if (code[i] == '2') {
-	//			minRad = midRad;
-	//			minLat = midLat;
-	//			type = SdogCellType::LG;
-	//		}
-	//		else if (code[i] == '3') {
-	//			maxRad = midRad;
-	//			// type doesn't change
-	//		}
-	//		else {
-	//			type = SdogCellType::INVALID;
-	//			break;
-	//		}
-	//	}
-	//}
+			if (code == 0) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMax = midLong;
+			}
+			else if (code == 1) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMin = midLong;
+			}
+			else if (code == 2) {
+				r.radMin = midRad;
+				r.latMin = midLat;
+				r.lngMax = midLong;
+			}
+			else if (code == 3) {
+				r.radMin = midRad;
+				r.latMin = midLat;
+				r.lngMin = midLong;
+			}
+			else if (code == 4) {
+				r.radMax = midRad;
+				r.latMax = midLat;
+				r.lngMax = midLong;
+			}
+			else if (code == 5) {
+				r.radMax = midRad;
+				r.latMax = midLat;
+				r.lngMin = midLong;
+			}
+			else if (code == 6) {
+				r.radMax = midRad;
+				r.latMin = midLat;
+				r.lngMax = midLong;
+			}
+			else if (code == 7) {
+				r.radMax = midRad;
+				r.latMin = midLat;
+				r.lngMin = midLong;
+			}
+			else {
+				type = SdogCellType::INVALID;
+				break;
+			}
+			// type doesn't change
+		}
+		else if (type == SdogCellType::LG) {
+
+			if (code == 0) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMax = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 1) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMin = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 2) {
+				r.radMin = midRad;
+				r.latMin = midLat;
+				// type doesn't change
+			}
+			else if (code == 4) {
+				r.radMax = midRad;
+				r.latMax = midLat;
+				r.lngMax = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 5) {
+				r.radMax = midRad;
+				r.latMax = midLat;
+				r.lngMin = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 6) {
+				r.radMax = midRad;
+				r.latMin = midLat;
+				// type doesn't change
+			}
+			else {
+				type = SdogCellType::INVALID;
+				break;
+			}
+		}
+		else {// type == CellType::SG
+
+			if (code == 0) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMax = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 1) {
+				r.radMin = midRad;
+				r.latMax = midLat;
+				r.lngMin = midLong;
+				type = SdogCellType::NG;
+			}
+			else if (code == 2) {
+				r.radMin = midRad;
+				r.latMin = midLat;
+				type = SdogCellType::LG;
+			}
+			else if (code == 4) {
+				r.radMax = midRad;
+				// type doesn't change
+			}
+			else {
+				type = SdogCellType::INVALID;
+				break;
+			}
+		}
+	}
 	return r;
 }
 
@@ -289,9 +306,9 @@ Index EfficientOperations::pointToIndex(const Point& p, int k) const {
 
 	// Find index in each coordinate
 	// 1ll << k == 2^k
-	Index radI = floor((1ll << k) * radP);
-	Index latI = floor((1ll << (k - latD)) * latP);
-	Index lngI = floor((1ll << (k - lngD)) * lngP);
+	std::bitset<32> radI = floor((1ll << k) * radP);
+	std::bitset<32> latI = floor((1ll << (k - latD)) * latP);
+	std::bitset<32> lngI = floor((1ll << (k - lngD)) * lngP);
 
 	// Set 1 to mark start of index
 	Index index;
@@ -324,7 +341,7 @@ Range EfficientOperations::indexToRange(Index index) const {
 	}
 
 	// Unweave index into components
-	Index radI, latI, lngI;
+	std::bitset<32> radI, latI, lngI;
 	for (int i = width - 1; i >= 0; i -= 3) {
 		radI <<= 1;
 		radI[0] = index[i];

@@ -44,6 +44,17 @@ struct Range {
 	double latMin, latMax;
 	double lngMin, lngMax;
 
+	bool operator==(const Range& rhs) {
+		return radMin == rhs.radMin &&
+		       radMax == rhs.radMax &&
+		       latMin == rhs.latMin &&
+		       latMax == rhs.latMax &&
+		       lngMin == rhs.lngMin &&
+		       lngMax == rhs.lngMax;
+	}
+	bool operator!=(const Range& rhs) {
+		return !(*this == rhs);
+	}
 	friend std::ostream& operator<<(std::ostream& os, const Range& r);
 };
 
