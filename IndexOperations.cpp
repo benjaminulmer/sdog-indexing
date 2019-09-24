@@ -1,5 +1,7 @@
 #include "IndexOperations.h"
 
+#include <libmorton/morton.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -35,11 +37,11 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 	r.lngMax = M_PI_2;
 
 	Index index;
-	index[0] = 1;
+	index = 1;
 
 	// Loop for desired number of levels and determine which child point is in for each itteration
 	SdogCellType curType = SdogCellType::SG;
-	for (unsigned int i = 0; i < k; i++) {
+	for (int i = 0; i < k; i++) {
 
 		unsigned int childCode = 0;
 		double radMid = 0.5 * r.radMin + 0.5 * r.radMax;
@@ -139,11 +141,10 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 Range SimpleOperations::indexToRange(Index index) const {
 
 	// Find width of index
-	int width;
-	for (width = INDEX_WIDTH - 1; width >= 0; width--) {
-		if (index[width] == 1) {
-			break;
-		}
+	Index copy = index;
+	int width = 0;
+	while (copy >>= 1) {
+		width++;
 	}
 
 	Range r;
@@ -158,13 +159,9 @@ Range SimpleOperations::indexToRange(Index index) const {
 
 	// Loop for each char in code and determine properties based on code
 	SdogCellType type = SdogCellType::SG;
-	for (int i = width - 1; i >= 0; i -= 3) {
+	for (int i = k - 1; i >= 0; i--) {
 
-		Index levelI;
-		levelI[2] = index[i];
-		levelI[1] = index[i - 1];
-		levelI[0] = index[i - 2];
-		int code = levelI.to_ulong();
+		DimIndex code = (index & (7ll << (i * 3))) >> (i * 3);
 
 		double midLat = 0.5 * r.latMin + 0.5 * r.latMax;
 		double midLong = 0.5 * r.lngMin + 0.5 * r.lngMax;
@@ -301,75 +298,51 @@ Index EfficientOperations::pointToIndex(const Point& p, int k) const {
 	double lngP = p.lng / M_PI_2;
 
 	// Modifiers to account for degenerate subdivision
-	int latD = std::min(floor(-log2(1 - radP)), (double)k);
-	int lngD = std::min(latD + floor(-log2(1 - latP)), (double)k);
+	int latD = std::min((int)floor(-log2(1.0 - radP)), k);
+	int lngD = std::min(latD + (int)floor(-log2(1.0 - latP)), k);
 
 	// Find index in each coordinate
 	// 1ll << k == 2^k
-	std::bitset<32> radI = floor((1ll << k) * radP);
-	std::bitset<32> latI = floor((1ll << (k - latD)) * latP);
-	std::bitset<32> lngI = floor((1ll << (k - lngD)) * lngP);
+	DimIndex radI = (DimIndex)floor((1ll << k) * radP);
+	DimIndex latI = (DimIndex)floor((1ll << (k - latD)) * latP);
+	DimIndex lngI = (DimIndex)floor((1ll << (k - lngD)) * lngP);
 
-	// Set 1 to mark start of index
-	Index index;
-	index[0] = 1;
-
-	// Interleave component bits (Morton coding)
-	for (int i = k - 1; i >= 0; i--) {
-		index <<= 1;
-		index[0] = radI[i];
-
-		index <<= 1;
-		index[0] = latI[i];
-
-		index <<= 1;
-		index[0] = lngI[i];
-	}
-
-	return index;
+	// Interleave Morton Code and set 1 bit at beginning to mark start of index
+	return libmorton::morton3D_64_encode(lngI, latI, radI) + (1ll << (k * 3));
 }
 
 
 Range EfficientOperations::indexToRange(Index index) const {
 
 	// Find width of index
-	int width;
-	for (width = INDEX_WIDTH - 1; width >= 0; width--) {
-		if (index[width] == 1) {
-			break;
-		}
+	Index copy = index;
+	int width = 0;
+	while (copy >>= 1) {
+		width++;
 	}
 
-	// Unweave index into components
-	std::bitset<32> radI, latI, lngI;
-	for (int i = width - 1; i >= 0; i -= 3) {
-		radI <<= 1;
-		radI[0] = index[i];
+	index ^= 1ll << width;
 
-		latI <<= 1;
-		latI[0] = index[i - 1];
-
-		lngI <<= 1;
-		lngI[0] = index[i - 2];
-	}
+	DimIndex radI, latI, lngI;
+	libmorton::morton3D_64_decode(index, lngI, latI, radI);
 
 	Range r;
 	int k = width / 3;
 
-	r.radMax = radI.to_ullong() / (double)(1ll << k);
-	r.radMin = (radI.to_ullong() + 1) / (double)(1ll << k);
+	r.radMax = radI / (double)(1ll << k);
+	r.radMin = (radI + 1.0) / (double)(1ll << k);
 
 	// Modifier to account for degenerate subdivision
-	int latD = std::min(floor(-log2(1 - r.radMax)), (double)k);
+	int latD = std::min((int)floor(-log2(1.0 - r.radMax)), k);
 
-	r.latMin = latI.to_ullong() / (double)(1ll << (k - latD));
-	r.latMax = (latI.to_ullong() + 1) / (double)(1ll << (k - latD));
+	r.latMin = latI / (double)(1ll << (k - latD));
+	r.latMax = (latI + 1.0) / (double)(1ll << (k - latD));
 
 	// Modifier to account for degenerate subdivision
-	int lngD = std::min(latD + floor(-log2(1 - r.latMin)), (double)k);
+	int lngD = std::min(latD + (int)floor(-log2(1.0 - r.latMin)), k);
 
-	r.lngMin = lngI.to_ullong() / (double)(1ll << (k - lngD));
-	r.lngMax = (lngI.to_ullong() + 1) / (double)(1ll << (k - lngD));
+	r.lngMin = lngI / (double)(1ll << (k - lngD));
+	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngD));
 
 	// Put bounds into coordinate domain as opposed to parameter
 	r.radMin = (1.0 - r.radMin) * GRID_RAD;

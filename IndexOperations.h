@@ -5,12 +5,11 @@
 #include <iostream>
 #include <tuple>
 
-
+constexpr unsigned int INDEX_WIDTH = 64;
 constexpr double GRID_RAD = 1.0;
-constexpr int INDEX_WIDTH = 64;
 
-typedef std::bitset<INDEX_WIDTH> Index;
-typedef unsigned __int64 uint64;
+typedef uint_fast64_t Index;
+typedef uint_fast32_t DimIndex;
 typedef std::function<double(double, double, double)> InterpFunc;
 
 
@@ -83,12 +82,17 @@ public:
 };
 
 //
-//class MappedOperations : public IndexOperations {
+//class ModifiedSimple : public IndexOperations {
+//
+//};
+//
+//
+//class ModifiedEfficient : public IndexOperations {
 //
 //public:
-//	MappedOperations();
-//	MappedOperations(double radPower, double latScale);
-//	MappedOperations(InterpFunc rad, InterpFunc lat);
+//	ModifiedEfficient();
+//	ModifiedEfficient(double radPower, double latScale);
+//	ModifiedEfficient(InterpFunc rad, InterpFunc lat);
 //
 //	Index pointToIndex(const Point& p, int k) const;
 //	Range indexToRange(Index index) const;

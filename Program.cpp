@@ -16,7 +16,7 @@ void Program::testPointToIndex() {
 	std::uniform_real_distribution<> latLngDist(0.0, M_PI_2);
 	std::uniform_int_distribution<> levelDist(1, 21);
 
-	int numPoints = 10000000;
+	int numPoints = 50000000;
 	std::vector<Point> points;
 
 	for (int i = 0; i < numPoints; i++) {
@@ -29,15 +29,17 @@ void Program::testPointToIndex() {
 	int errorCount = 0;
 	for (const Point& p : points) {
 
-		Index si;// = so.pointToIndex(p, 20);
-		Index ei = so.pointToIndex(p, 4);
+		int k = levelDist(eng);
+
+		Index si = so.pointToIndex(p, k);
+		Index ei = eo.pointToIndex(p, k);
 
 		if (si != ei) {
 			errorCount++;
-			//std::cout << "Error on trial #" << i << std::endl;
+			//std::cout << "Error" << std::endl;
 			//std::cout << p << std::endl;
-			//std::cout << "Simple: " << si << std::endl;
-			//std::cout << "Effcnt: " << ei << std::endl;
+			//std::cout << "Simple: " << std::bitset<64>(si) << std::endl;
+			//std::cout << "Effcnt: " << std::bitset<64>(ei) << std::endl;
 			//std::cout << std::endl;
 		}
 	}
@@ -61,7 +63,7 @@ void Program::testIndexToRange() {
 	std::uniform_real_distribution<> latLngDist(0.0, M_PI_2);
 	std::uniform_int_distribution<> levelDist(1, 21);
 
-	int numIndices = 10000000;
+	int numIndices = 50000000;
 	std::vector<Index> indices;
 	std::vector<Point> points;
 
@@ -77,13 +79,13 @@ void Program::testIndexToRange() {
 	int errorCount = 0;
 	for (const Index& i : indices) {
 
-		Range sr = eo.indexToRange(i);
-		Range er;// = eo.indexToRange(i);
+		Range sr = so.indexToRange(i);
+		Range er = eo.indexToRange(i);
 
 		if (sr != er) {
 			errorCount++;
-			//std::cout << "Error on trial #" << i << std::endl;
-			//std::cout << i << std::endl;
+			//std::cout << "Error" << std::endl;
+			//std::cout << std::bitset<64>(i) << std::endl;
 			//std::cout << "Simple: " << sr << std::endl;
 			//std::cout << "Effcnt: " << er << std::endl;
 			//std::cout << std::endl;
