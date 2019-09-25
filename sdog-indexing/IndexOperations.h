@@ -56,12 +56,12 @@ struct Range {
 	double lngMin, lngMax;
 
 	bool operator==(const Range& rhs) {
-		return radMin - rhs.radMin <= abs(0.00000001) &&
-		       radMax - rhs.radMax <= abs(0.00000001) &&
-		       latMin - rhs.latMin <= abs(0.00000001) &&
-		       latMax - rhs.latMax <= abs(0.00000001) &&
-		       lngMin - rhs.lngMin <= abs(0.00000001) &&
-		       lngMax - rhs.lngMax <= abs(0.00000001);
+		return radMin - rhs.radMin <= abs(0.000000001) &&
+		       radMax - rhs.radMax <= abs(0.000000001) &&
+		       latMin - rhs.latMin <= abs(0.000000001) &&
+		       latMax - rhs.latMax <= abs(0.000000001) &&
+		       lngMin - rhs.lngMin <= abs(0.000000001) &&
+		       lngMax - rhs.lngMax <= abs(0.000000001);
 	}
 	bool operator!=(const Range& rhs) {
 		return !(*this == rhs);

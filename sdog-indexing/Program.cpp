@@ -59,7 +59,9 @@ void Program::testPointToIndex() {
 void Program::testIndexToRange() {
 
 	SimpleOperations so;
+	SimpleOperations ms(true);
 	EfficientOperations eo;
+	ModifiedEfficient me;
 
 	std::random_device rd;
 	std::mt19937 eng(rd());
@@ -83,8 +85,8 @@ void Program::testIndexToRange() {
 	int errorCount = 0;
 	for (const Index& i : indices) {
 
-		Range sr = so.indexToRange(i);
-		Range er = eo.indexToRange(i);
+		Range sr = ms.indexToRange(i);
+		Range er = me.indexToRange(i);
 
 		if (sr != er) {
 			errorCount++;

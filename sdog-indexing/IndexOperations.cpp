@@ -23,7 +23,7 @@ std::ostream& operator<<(std::ostream& os, const Range& r) {
 SimpleOperations::SimpleOperations() {
 
 	auto mid = [&](double max, double min, SdogCellType type) {
-		return 0.5 * max + 0.5 * min;
+		return (max + min) / 2.0;
 	};
 	radFunc = mid;
 	latFunc = mid;
@@ -109,7 +109,7 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 		unsigned int childCode = 0;
 		double radMid = radFunc(r.radMax, r.radMin, curType);
 		double latMid = latFunc(r.latMax, r.latMin, curType);
-		double lngMid = 0.5 * r.lngMin + 0.5 * r.lngMax;
+		double lngMid = (r.lngMin + r.lngMax) / 2.0;
 
 		if (curType == SdogCellType::NG) {
 
@@ -228,7 +228,7 @@ Range SimpleOperations::indexToRange(Index index) const {
 
 		double radMid = radFunc(r.radMax, r.radMin, type);
 		double latMid = latFunc(r.latMax, r.latMin, type);
-		double lngMid = 0.5 * r.lngMin + 0.5 * r.lngMax;
+		double lngMid = (r.lngMin + r.lngMax) / 2.0;
 
 		if (type == SdogCellType::NG) {
 
@@ -466,26 +466,35 @@ Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
 	int latD = std::min((int)floor(radExp), k);
 	int lngD = std::min(latD + (int)floor(latExp), k);
 
+	// Max and mins for mapping technique
 	double rMax = pow(2.0, -floor(radExp));
 	double rMin = pow(2.0, -ceil(radExp));
 
 	double lsMin = 1.0 - (pow(2.0, -floor(latExp)));
 	double lsMax = 1.0 - (pow(2.0, -ceil(latExp)));
 
-	// TODO make this work
-	if (lsMax == lsMin || rMax == rMin) {
-		return 0;
+	// Handle exact logarithm (latitude on split)
+	if (lsMax != lsMin) {
+		double lvMin = 2.0 * lsMin - lsMin * lsMin;
+		double lvMax = 2.0 * lsMax - lsMax * lsMax;
+
+		double latNGP = (latP - lvMin) / (lvMax - lvMin);
+		latP = latNGP * lsMax + (1.0 - latNGP) * lsMin;
+	}
+	else {
+		latP = lsMax;
 	}
 
-	double lvMin = 2.0 * lsMin - lsMin * lsMin;
-	double lvMax = 2.0 * lsMax - lsMax * lsMax;
+	// Handle exact logarithm (radius on split)
+	if (rMax != rMin) {
+		double radPi = 1.0 - radP;
+		double radNGP = (radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
 
-	double radPi = 1.0 - radP;
-	double radNGP = (radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
-	double latNGP = (latP - lvMin) / (lvMax - lvMin);
-
-	radP = 1.0 - (radNGP * rMax + (1.0 - radNGP) * rMin);
-	latP = latNGP * lsMax + (1.0 - latNGP) * lsMin;
+		radP = 1.0 - (radNGP * rMax + (1.0 - radNGP) * rMin);
+	}
+	else {
+		radP = rMax;
+	}
 
 	// Find index in each coordinate
 	// 1ll << k == 2^k
@@ -499,5 +508,76 @@ Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
 
 
 Range ModifiedEfficient::indexToRange(Index index) const {
-	return Range();
+
+	// Find width of index
+	Index copy = index;
+	int width = 0;
+	while (copy >>= 1) {
+		width++;
+	}
+
+	index ^= 1ll << width;
+
+	DimIndex radI, latI, lngI;
+	libmorton::morton3D_64_decode(index, lngI, latI, radI);
+
+	Range r;
+	int k = width / 3;
+
+	r.radMax = radI / (double)(1ll << k);
+	r.radMin = (radI + 1.0) / (double)(1ll << k);
+
+	// Max and min for mapping technique
+	double radExp = -log2(1.0 - r.radMax);
+	double rMax = pow(2.0, -floor(radExp));
+	double rMin = pow(2.0, -ceil(radExp));
+
+	// Handle exact logarithm (max radius on split)
+	if (rMax == rMin) {
+		rMin = pow(2.0, -(ceil(radExp) + 1.0));
+	}
+
+	double radMaxNGP = (1.0 - r.radMax - rMin) / (rMax - rMin);
+	double radMinNGP = (1.0 - r.radMin - rMin) / (rMax - rMin);
+
+	// Modifier to account for degenerate subdivision
+	int latD = std::min((int)floor(radExp), k);
+	r.latMin = latI / (double)(1ll << (k - latD));
+	r.latMax = (latI + 1.0) / (double)(1ll << (k - latD));
+
+	// Max and min for mapping technique
+	double latExp = -log2(1.0 - r.latMin);
+	double lsMin = 1.0 - (pow(2.0, -floor(latExp)));
+	double lsMax = 1.0 - (pow(2.0, -ceil(latExp)));
+
+	// Handle exact logarithm (min latitude on split)
+	if (lsMax == lsMin) {
+		lsMax = 1.0 - (pow(2.0, -(ceil(latExp) + 1.0)));
+	}
+
+	double lvMin = 2.0 * lsMin - lsMin * lsMin;
+	double lvMax = 2.0 * lsMax - lsMax * lsMax;
+
+	double latMaxNGP = (r.latMax - lsMin) / (lsMax - lsMin);
+	double latMinNGP = (r.latMin - lsMin) / (lsMax - lsMin);
+
+	// Modifier to account for degenerate subdivision
+	int lngD = std::min(latD + (int)floor(latExp), k);
+	r.lngMin = lngI / (double)(1ll << (k - lngD));
+	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngD));
+
+	// Put bounds into coordinate domain as opposed to parameter
+	r.radMin = cbrt(radMinNGP * rMax * rMax * rMax + (1.0 - radMinNGP) * rMin * rMin * rMin) * GRID_RAD;
+	if (r.radMin < 0.0) r.radMin = 0.0; // precision issues when min radius is 0
+	r.radMax = cbrt(radMaxNGP * rMax * rMax * rMax + (1.0 - radMaxNGP) * rMin * rMin * rMin) * GRID_RAD;
+	r.latMin = asin(latMinNGP * lvMax + (1.0 - latMinNGP) * lvMin);
+
+	double temp = latMaxNGP * lvMax + (1.0 - latMaxNGP) * lvMin;
+	if (temp > 1.0) temp = 1.0; // handle precision issues that result in asin(1.0 + e)
+	r.latMax = asin(temp);
+
+	r.lngMin *= M_PI_2;
+	r.lngMax *= M_PI_2;
+
+	return r;
 }
