@@ -2,6 +2,6 @@
 
 int main(int argc, char* argv[]) {
 	Program p;
-	p.testIndexToRange();
+	p.start();
 	return 0;
 }
