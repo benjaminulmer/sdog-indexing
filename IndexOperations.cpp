@@ -11,6 +11,7 @@ std::ostream& operator<<(std::ostream& os, const Point& p) {
 	return os;
 }
 
+
 std::ostream& operator<<(std::ostream& os, const Range& r) {
 	os << "Rad [" << r.radMin << ", " << r.radMax << "] ";
 	os << "Lat [" << r.latMin << ", " << r.latMax << "] ";
@@ -18,12 +19,74 @@ std::ostream& operator<<(std::ostream& os, const Range& r) {
 	return os;
 }
 
-enum class SdogCellType {
-	SG,
-	LG,
-	NG,
-	INVALID
-};
+
+SimpleOperations::SimpleOperations() {
+
+	auto mid = [&](double max, double min, SdogCellType type) {
+		return 0.5 * max + 0.5 * min;
+	};
+	radFunc = mid;
+	latFunc = mid;
+}
+
+
+SimpleOperations::SimpleOperations(bool volume) {
+
+	if (volume) {
+		auto r = [&](double max, double min, SdogCellType type) {
+			if (type == SdogCellType::NG || type == SdogCellType::LG) {
+				return cbrt((max * max * max + min * min * min) / 2.0);
+			}
+			else {
+				return (max + min) / 2.0;
+			}
+		};
+		radFunc = r;
+
+		auto l = [&](double max, double min, SdogCellType type) {
+			if (type == SdogCellType::SG || type == SdogCellType::LG) {
+				return asin(0.75 * sin(max) + 0.25 * sin(min));
+			}
+			else {
+				return asin((sin(max) + sin(min)) / 2.0);
+			}
+		};
+		latFunc = l;
+	}
+	else {
+		SimpleOperations();
+	}
+}
+
+
+SimpleOperations::SimpleOperations(double radPower, double latScale) {
+
+	auto r = [&](double max, double min, SdogCellType type) {
+		if (type == SdogCellType::NG || type == SdogCellType::LG) {
+			return pow((max * max * max + min * min * min) / 2.0, 1.0 / radPower);
+		}
+		else {
+			return (max + min) / 2.0;
+		}
+	};
+	radFunc = r;
+
+	auto l = [&](double max, double min, SdogCellType type) {
+		if (type == SdogCellType::SG || type == SdogCellType::LG) {
+			return asin(0.75 * sin(max) + 0.25 * sin(min));
+		}
+		else {
+			return latScale * asin(0.5 * (1.0 / latScale) * sin(max) + 0.5 * (1.0 / latScale) * sin(min));
+		}
+	};
+	latFunc = l;
+}
+
+
+SimpleOperations::SimpleOperations(SplitFunc radFunc, SplitFunc latFunc) :
+	radFunc(radFunc),
+	latFunc(latFunc)
+{}
 
 
 Index SimpleOperations::pointToIndex(const Point& p, int k) const {
@@ -44,8 +107,8 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 	for (int i = 0; i < k; i++) {
 
 		unsigned int childCode = 0;
-		double radMid = 0.5 * r.radMin + 0.5 * r.radMax;
-		double latMid = 0.5 * r.latMin + 0.5 * r.latMax;
+		double radMid = radFunc(r.radMax, r.radMin, curType);
+		double latMid = latFunc(r.latMax, r.latMin, curType);
 		double lngMid = 0.5 * r.lngMin + 0.5 * r.lngMax;
 
 		if (curType == SdogCellType::NG) {
@@ -163,51 +226,51 @@ Range SimpleOperations::indexToRange(Index index) const {
 
 		DimIndex code = (index & (7ll << (i * 3))) >> (i * 3);
 
-		double midLat = 0.5 * r.latMin + 0.5 * r.latMax;
-		double midLong = 0.5 * r.lngMin + 0.5 * r.lngMax;
-		double midRad = 0.5 * r.radMin + 0.5 * r.radMax;
+		double radMid = radFunc(r.radMax, r.radMin, type);
+		double latMid = latFunc(r.latMax, r.latMin, type);
+		double lngMid = 0.5 * r.lngMin + 0.5 * r.lngMax;
 
 		if (type == SdogCellType::NG) {
 
 			if (code == 0) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMax = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMax = lngMid;
 			}
 			else if (code == 1) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMin = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMin = lngMid;
 			}
 			else if (code == 2) {
-				r.radMin = midRad;
-				r.latMin = midLat;
-				r.lngMax = midLong;
+				r.radMin = radMid;
+				r.latMin = latMid;
+				r.lngMax = lngMid;
 			}
 			else if (code == 3) {
-				r.radMin = midRad;
-				r.latMin = midLat;
-				r.lngMin = midLong;
+				r.radMin = radMid;
+				r.latMin = latMid;
+				r.lngMin = lngMid;
 			}
 			else if (code == 4) {
-				r.radMax = midRad;
-				r.latMax = midLat;
-				r.lngMax = midLong;
+				r.radMax = radMid;
+				r.latMax = latMid;
+				r.lngMax = lngMid;
 			}
 			else if (code == 5) {
-				r.radMax = midRad;
-				r.latMax = midLat;
-				r.lngMin = midLong;
+				r.radMax = radMid;
+				r.latMax = latMid;
+				r.lngMin = lngMid;
 			}
 			else if (code == 6) {
-				r.radMax = midRad;
-				r.latMin = midLat;
-				r.lngMax = midLong;
+				r.radMax = radMid;
+				r.latMin = latMid;
+				r.lngMax = lngMid;
 			}
 			else if (code == 7) {
-				r.radMax = midRad;
-				r.latMin = midLat;
-				r.lngMin = midLong;
+				r.radMax = radMid;
+				r.latMin = latMid;
+				r.lngMin = lngMid;
 			}
 			else {
 				type = SdogCellType::INVALID;
@@ -218,37 +281,37 @@ Range SimpleOperations::indexToRange(Index index) const {
 		else if (type == SdogCellType::LG) {
 
 			if (code == 0) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMax = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMax = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 1) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMin = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMin = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 2) {
-				r.radMin = midRad;
-				r.latMin = midLat;
+				r.radMin = radMid;
+				r.latMin = latMid;
 				// type doesn't change
 			}
 			else if (code == 4) {
-				r.radMax = midRad;
-				r.latMax = midLat;
-				r.lngMax = midLong;
+				r.radMax = radMid;
+				r.latMax = latMid;
+				r.lngMax = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 5) {
-				r.radMax = midRad;
-				r.latMax = midLat;
-				r.lngMin = midLong;
+				r.radMax = radMid;
+				r.latMax = latMid;
+				r.lngMin = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 6) {
-				r.radMax = midRad;
-				r.latMin = midLat;
+				r.radMax = radMid;
+				r.latMin = latMid;
 				// type doesn't change
 			}
 			else {
@@ -259,24 +322,24 @@ Range SimpleOperations::indexToRange(Index index) const {
 		else {// type == CellType::SG
 
 			if (code == 0) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMax = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMax = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 1) {
-				r.radMin = midRad;
-				r.latMax = midLat;
-				r.lngMin = midLong;
+				r.radMin = radMid;
+				r.latMax = latMid;
+				r.lngMin = lngMid;
 				type = SdogCellType::NG;
 			}
 			else if (code == 2) {
-				r.radMin = midRad;
-				r.latMin = midLat;
+				r.radMin = radMid;
+				r.latMin = latMid;
 				type = SdogCellType::LG;
 			}
 			else if (code == 4) {
-				r.radMax = midRad;
+				r.radMax = radMid;
 				// type doesn't change
 			}
 			else {
@@ -289,11 +352,10 @@ Range SimpleOperations::indexToRange(Index index) const {
 }
 
 
-
 Index EfficientOperations::pointToIndex(const Point& p, int k) const {
 
 	// Find percentage distance in each coordinate
-	double radP = 1 - (p.rad / GRID_RAD);
+	double radP = 1.0 - (p.rad / GRID_RAD);
 	double latP = p.lat / M_PI_2;
 	double lngP = p.lng / M_PI_2;
 
@@ -355,37 +417,87 @@ Range EfficientOperations::indexToRange(Index index) const {
 	return r;
 }
 
-//
-//MappedOperations::MappedOperations() {
-//
-//	auto r = [&](double max, double min, double d) {
-//		return GRID_RAD * cbrt(d * max*max*max + (1.0 - d) * min*min*min);
-//	};
-//	rad = r;
-//
-//	auto l = [&](double max, double min, double d) {
-//		return asin(d * sin(max) + (1.0 - d) * sin(min));
-//	};
-//	lat = l;
-//}
-//
-//
-//MappedOperations::MappedOperations(double radPower, double latScale) {
-//
-//	auto r = [&](double max, double min, double d) {
-//		return GRID_RAD * pow(d * pow(max, radPower) + (1.0 - d) * pow(min, radPower), 1 / radPower);
-//	};
-//	rad = r;
-//
-//	auto l = [&](double max, double min, double d) {
-//		return latScale * asin(d * (1.0 / latScale) * sin(max) + (1.0 - d) * (1.0 / latScale) * sin(min));
-//	};
-//	lat = l;
-//}
-//
-//
-//MappedOperations::MappedOperations(InterpFunc rad, InterpFunc lat) :
-//	rad(rad),
-//	lat(lat)
-//{}
 
+ModifiedEfficient::ModifiedEfficient() {
+
+	auto r = [&](double max, double min, double d) {
+		return GRID_RAD * cbrt(d * max*max*max + (1.0 - d) * min*min*min);
+	};
+	radFunc = r;
+
+	auto l = [&](double max, double min, double d) {
+		return asin(d * sin(max) + (1.0 - d) * sin(min));
+	};
+	latFunc = l;
+}
+
+
+ModifiedEfficient::ModifiedEfficient(double radPower, double latScale) {
+
+	auto r = [&](double max, double min, double d) {
+		return GRID_RAD * pow(d * pow(max, radPower) + (1.0 - d) * pow(min, radPower), 1 / radPower);
+	};
+	radFunc = r;
+
+	auto l = [&](double max, double min, double d) {
+		return latScale * asin(d * (1.0 / latScale) * sin(max) + (1.0 - d) * (1.0 / latScale) * sin(min));
+	};
+	latFunc = l;
+}
+
+
+ModifiedEfficient::ModifiedEfficient(InterpFunc radFunc, InterpFunc latFunc) :
+	radFunc(radFunc),
+	latFunc(latFunc)
+{}
+
+
+Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
+
+	// Find percentage distance in each coordinate
+	double radP = 1.0 - (p.rad / GRID_RAD);
+	double latP = sin(p.lat);
+	double lngP = p.lng / M_PI_2;
+
+	double radExp = -log2(1.0 - radP);
+	double latExp = -log2(sqrt(1.0 - latP));
+
+	// Modifiers to account for degenerate subdivision
+	int latD = std::min((int)floor(radExp), k);
+	int lngD = std::min(latD + (int)floor(latExp), k);
+
+	double rMax = pow(2.0, -floor(radExp));
+	double rMin = pow(2.0, -ceil(radExp));
+
+	double lsMin = 1.0 - (pow(2.0, -floor(latExp)));
+	double lsMax = 1.0 - (pow(2.0, -ceil(latExp)));
+
+	// TODO make this work
+	if (lsMax == lsMin || rMax == rMin) {
+		return 0;
+	}
+
+	double lvMin = 2.0 * lsMin - lsMin * lsMin;
+	double lvMax = 2.0 * lsMax - lsMax * lsMax;
+
+	double radPi = 1.0 - radP;
+	double radNGP = (radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
+	double latNGP = (latP - lvMin) / (lvMax - lvMin);
+
+	radP = 1.0 - (radNGP * rMax + (1.0 - radNGP) * rMin);
+	latP = latNGP * lsMax + (1.0 - latNGP) * lsMin;
+
+	// Find index in each coordinate
+	// 1ll << k == 2^k
+	DimIndex radI = (DimIndex)floor((1ll << k) * radP);
+	DimIndex latI = (DimIndex)floor((1ll << (k - latD)) * latP);
+	DimIndex lngI = (DimIndex)floor((1ll << (k - lngD)) * lngP);
+
+	// Interleave Morton Code and set 1 bit at beginning to mark start of index
+	return libmorton::morton3D_64_encode(lngI, latI, radI) + (1ll << (k * 3));
+}
+
+
+Range ModifiedEfficient::indexToRange(Index index) const {
+	return Range();
+}

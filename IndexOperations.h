@@ -5,12 +5,23 @@
 #include <iostream>
 #include <tuple>
 
+
+enum class SdogCellType {
+	SG,
+	LG,
+	NG,
+	INVALID
+};
+
+
 constexpr unsigned int INDEX_WIDTH = 64;
 constexpr double GRID_RAD = 1.0;
+
 
 typedef uint_fast64_t Index;
 typedef uint_fast32_t DimIndex;
 typedef std::function<double(double, double, double)> InterpFunc;
+typedef std::function<double(double, double, SdogCellType)> SplitFunc;
 
 
 struct Point {
@@ -28,6 +39,7 @@ struct Point {
 	friend std::ostream& operator<<(std::ostream& os, const Point& p);
 };
 
+
 struct Range {
 	Range() = default;
 	Range(double radMin, double radMax, double latMin, double latMax, double lngMin, double lngMax) :
@@ -44,12 +56,12 @@ struct Range {
 	double lngMin, lngMax;
 
 	bool operator==(const Range& rhs) {
-		return radMin == rhs.radMin &&
-		       radMax == rhs.radMax &&
-		       latMin == rhs.latMin &&
-		       latMax == rhs.latMax &&
-		       lngMin == rhs.lngMin &&
-		       lngMax == rhs.lngMax;
+		return radMin - rhs.radMin <= abs(0.00000001) &&
+		       radMax - rhs.radMax <= abs(0.00000001) &&
+		       latMin - rhs.latMin <= abs(0.00000001) &&
+		       latMax - rhs.latMax <= abs(0.00000001) &&
+		       lngMin - rhs.lngMin <= abs(0.00000001) &&
+		       lngMax - rhs.lngMax <= abs(0.00000001);
 	}
 	bool operator!=(const Range& rhs) {
 		return !(*this == rhs);
@@ -69,8 +81,18 @@ public:
 class SimpleOperations : public IndexOperations {
 
 public:
+	SimpleOperations();
+	SimpleOperations(bool volume);
+	SimpleOperations(double radPower, double latScale);
+	SimpleOperations(SplitFunc radFunc, SplitFunc latFunc);
+
 	Index pointToIndex(const Point& p, int k) const;
 	Range indexToRange(Index index) const;
+
+private:
+	SplitFunc radFunc;
+	SplitFunc latFunc;
+
 };
 
 
@@ -81,23 +103,18 @@ public:
 	Range indexToRange(Index index) const;
 };
 
-//
-//class ModifiedSimple : public IndexOperations {
-//
-//};
-//
-//
-//class ModifiedEfficient : public IndexOperations {
-//
-//public:
-//	ModifiedEfficient();
-//	ModifiedEfficient(double radPower, double latScale);
-//	ModifiedEfficient(InterpFunc rad, InterpFunc lat);
-//
-//	Index pointToIndex(const Point& p, int k) const;
-//	Range indexToRange(Index index) const;
-//
-//private:
-//	InterpFunc rad;
-//	InterpFunc lat;
-//};
+
+class ModifiedEfficient : public IndexOperations {
+
+public:
+	ModifiedEfficient();
+	ModifiedEfficient(double radPower, double latScale);
+	ModifiedEfficient(InterpFunc radFunc, InterpFunc latFunc);
+
+	Index pointToIndex(const Point& p, int k) const;
+	Range indexToRange(Index index) const;
+
+private:
+	InterpFunc radFunc;
+	InterpFunc latFunc;
+};

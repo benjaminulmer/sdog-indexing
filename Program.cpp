@@ -8,7 +8,9 @@
 void Program::testPointToIndex() {
 
 	SimpleOperations so;
+	SimpleOperations ms(true);
 	EfficientOperations eo;
+	ModifiedEfficient me;
 
 	std::random_device rd;
 	std::mt19937 eng(rd());
@@ -16,9 +18,11 @@ void Program::testPointToIndex() {
 	std::uniform_real_distribution<> latLngDist(0.0, M_PI_2);
 	std::uniform_int_distribution<> levelDist(1, 21);
 
-	int numPoints = 50000000;
+	int numPoints = 10000000;
+	//int numPoints = 100000;
 	std::vector<Point> points;
 
+	points.push_back(Point(0.755, 0.78, 0.01));
 	for (int i = 0; i < numPoints; i++) {
 		points.push_back(Point(radDist(eng), latLngDist(eng), latLngDist(eng)));
 	}
@@ -29,18 +33,18 @@ void Program::testPointToIndex() {
 	int errorCount = 0;
 	for (const Point& p : points) {
 
-		int k = levelDist(eng);
+		int k = 2; //levelDist(eng);
 
-		Index si = so.pointToIndex(p, k);
-		Index ei = eo.pointToIndex(p, k);
+		Index si = ms.pointToIndex(p, k);
+		Index ei = me.pointToIndex(p, k);
 
 		if (si != ei) {
 			errorCount++;
-			//std::cout << "Error" << std::endl;
-			//std::cout << p << std::endl;
-			//std::cout << "Simple: " << std::bitset<64>(si) << std::endl;
-			//std::cout << "Effcnt: " << std::bitset<64>(ei) << std::endl;
-			//std::cout << std::endl;
+			std::cout << "Error" << std::endl;
+			std::cout << p << std::endl;
+			std::cout << "Simple: " << std::bitset<64>(si) << std::endl;
+			std::cout << "Effcnt: " << std::bitset<64>(ei) << std::endl;
+			std::cout << std::endl;
 		}
 	}
 
@@ -63,7 +67,7 @@ void Program::testIndexToRange() {
 	std::uniform_real_distribution<> latLngDist(0.0, M_PI_2);
 	std::uniform_int_distribution<> levelDist(1, 21);
 
-	int numIndices = 50000000;
+	int numIndices = 10000000;
 	std::vector<Index> indices;
 	std::vector<Point> points;
 
@@ -84,11 +88,11 @@ void Program::testIndexToRange() {
 
 		if (sr != er) {
 			errorCount++;
-			//std::cout << "Error" << std::endl;
-			//std::cout << std::bitset<64>(i) << std::endl;
-			//std::cout << "Simple: " << sr << std::endl;
-			//std::cout << "Effcnt: " << er << std::endl;
-			//std::cout << std::endl;
+			std::cout << "Error" << std::endl;
+			std::cout << std::bitset<64>(i) << std::endl;
+			std::cout << "Simple: " << sr << std::endl;
+			std::cout << "Effcnt: " << er << std::endl;
+			std::cout << std::endl;
 		}
 	}
 
