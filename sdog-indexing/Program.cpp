@@ -1,14 +1,11 @@
 #include "Program.h"
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 
 
-void Program::start() {
-
-	int n = 10000000;
-	//int n = 1000;
-	int k = 15;
+void Program::testOperations(int n, int k) {
 
 	std::vector<Point> points = generateRandomPoints(n);
 	std::vector<Index> indices = generateIndicesFromPoints(points, k);
@@ -34,7 +31,40 @@ void Program::start() {
 		int numVolItoRErrors = compareIndexToRange(indices, &simpleVol, &efficientVol, false);
 		std::cout << "ItoR vol: " << numVolItoRErrors << std::endl;
 	}
-	system("pause");
+}
+
+
+void Program::benchmarkAll(int n, int maxK) {
+
+	std::ofstream out("results-10mil.csv");
+	out << "Simple PtoI,Simple Volume PtoI,Efficient PtoI,Efficient Volume PtoI,Simple ItoR,Simple Volume ItoR,Efficient ItoR,Efficient Volume ItoR" << std::endl;
+
+	SimpleOperations simple;
+	SimpleOperations simpleVol(true);
+	EfficientOperations efficient;
+	ModifiedEfficient efficientVol;
+
+	std::vector<Point> points = generateRandomPoints(n);
+
+	for (int k = 1; k <= maxK; k++) {
+
+		std::vector<Index> indices = generateIndicesFromPoints(points, k);
+		std::cout << "starting " << k << "...";
+
+		out << timePointToIndex(points, k, &simple) << ",";
+		out << timePointToIndex(points, k, &simpleVol) << ",";
+		out << timePointToIndex(points, k, &efficient) << ",";
+		out << timePointToIndex(points, k, &efficientVol) << ",";
+
+		out << timeIndexToRange(indices, &simple) << ",";
+		out << timeIndexToRange(indices, &simpleVol) << ",";
+		out << timeIndexToRange(indices, &efficient) << ",";
+		out << timeIndexToRange(indices, &efficientVol) << std::endl;
+
+		std::cout << " done" << std::endl;
+	}
+
+	out.close();
 }
 
 

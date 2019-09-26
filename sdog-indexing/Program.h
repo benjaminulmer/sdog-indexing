@@ -8,7 +8,8 @@
 class Program {
 
 public:
-	void start();
+	void testOperations(int n, int k);
+	void benchmarkAll(int n, int maxK);
 
 private:
 	int comparePointToIndex(const std::vector<Point>& points, int k, const IndexOperations* io1, const IndexOperations* io2, bool log);

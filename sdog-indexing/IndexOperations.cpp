@@ -230,6 +230,7 @@ Range SimpleOperations::indexToRange(Index index) const {
 		double latMid = latFunc(r.latMax, r.latMin, type);
 		double lngMid = (r.lngMin + r.lngMax) / 2.0;
 
+
 		if (type == SdogCellType::NG) {
 
 			if (code == 0) {
