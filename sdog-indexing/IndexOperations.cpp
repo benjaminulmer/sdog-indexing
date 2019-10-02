@@ -22,18 +22,18 @@ std::ostream& operator<<(std::ostream& os, const Range& r) {
 
 SimpleOperations::SimpleOperations() {
 
-	auto mid = [&](double max, double min, SdogCellType type) {
+	auto mid = [=](double max, double min, SdogCellType type) {
 		return (max + min) / 2.0;
 	};
-	radFunc = mid;
-	latFunc = mid;
+	radSplit = mid;
+	latSplit = mid;
 }
 
 
 SimpleOperations::SimpleOperations(bool volume) {
 
 	if (volume) {
-		auto r = [&](double max, double min, SdogCellType type) {
+		auto r = [=](double max, double min, SdogCellType type) {
 			if (type == SdogCellType::NG || type == SdogCellType::LG) {
 				return cbrt((max * max * max + min * min * min) / 2.0);
 			}
@@ -41,9 +41,9 @@ SimpleOperations::SimpleOperations(bool volume) {
 				return (max + min) / 2.0;
 			}
 		};
-		radFunc = r;
+		radSplit = r;
 
-		auto l = [&](double max, double min, SdogCellType type) {
+		auto l = [=](double max, double min, SdogCellType type) {
 			if (type == SdogCellType::SG || type == SdogCellType::LG) {
 				return asin(0.75 * sin(max) + 0.25 * sin(min));
 			}
@@ -51,7 +51,7 @@ SimpleOperations::SimpleOperations(bool volume) {
 				return asin((sin(max) + sin(min)) / 2.0);
 			}
 		};
-		latFunc = l;
+		latSplit = l;
 	}
 	else {
 		SimpleOperations();
@@ -61,32 +61,26 @@ SimpleOperations::SimpleOperations(bool volume) {
 
 SimpleOperations::SimpleOperations(double radPower, double latScale) {
 
-	auto r = [&](double max, double min, SdogCellType type) {
+	auto r = [=](double max, double min, SdogCellType type) {
 		if (type == SdogCellType::NG || type == SdogCellType::LG) {
-			return pow((max * max * max + min * min * min) / 2.0, 1.0 / radPower);
+			return pow((pow(max, radPower) + pow(min, radPower)) / 2.0, 1.0 / radPower);
 		}
 		else {
 			return (max + min) / 2.0;
 		}
 	};
-	radFunc = r;
+	radSplit = r;
 
-	auto l = [&](double max, double min, SdogCellType type) {
+	auto l = [=](double max, double min, SdogCellType type) {
 		if (type == SdogCellType::SG || type == SdogCellType::LG) {
 			return asin(0.75 * sin(max) + 0.25 * sin(min));
 		}
 		else {
-			return latScale * asin(0.5 * (1.0 / latScale) * sin(max) + 0.5 * (1.0 / latScale) * sin(min));
+			return latScale * asin(0.5 * sin(max / latScale) + 0.5 * sin(min / latScale));
 		}
 	};
-	latFunc = l;
+	latSplit = l;
 }
-
-
-SimpleOperations::SimpleOperations(SplitFunc radFunc, SplitFunc latFunc) :
-	radFunc(radFunc),
-	latFunc(latFunc)
-{}
 
 
 Index SimpleOperations::pointToIndex(const Point& p, int k) const {
@@ -107,8 +101,8 @@ Index SimpleOperations::pointToIndex(const Point& p, int k) const {
 	for (int i = 0; i < k; i++) {
 
 		unsigned int childCode = 0;
-		double radMid = radFunc(r.radMax, r.radMin, curType);
-		double latMid = latFunc(r.latMax, r.latMin, curType);
+		double radMid = radSplit(r.radMax, r.radMin, curType);
+		double latMid = latSplit(r.latMax, r.latMin, curType);
 		double lngMid = (r.lngMin + r.lngMax) / 2.0;
 
 		if (curType == SdogCellType::NG) {
@@ -226,8 +220,8 @@ Range SimpleOperations::indexToRange(Index index) const {
 
 		DimIndex code = (index & (7ll << (i * 3))) >> (i * 3);
 
-		double radMid = radFunc(r.radMax, r.radMin, type);
-		double latMid = latFunc(r.latMax, r.latMin, type);
+		double radMid = radSplit(r.radMax, r.radMin, type);
+		double latMid = latSplit(r.latMax, r.latMin, type);
 		double lngMid = (r.lngMin + r.lngMax) / 2.0;
 
 
@@ -421,36 +415,53 @@ Range EfficientOperations::indexToRange(Index index) const {
 
 ModifiedEfficient::ModifiedEfficient() {
 
-	auto r = [&](double max, double min, double d) {
-		return GRID_RAD * cbrt(d * max*max*max + (1.0 - d) * min*min*min);
+	auto rI = [=](double max, double min, double d) {
+		return GRID_RAD * cbrt(d * max * max * max + (1.0 - d) * min * min * min);
 	};
-	radFunc = r;
+	auto rP = [=](double max, double min, double value) {
+		return (value * value * value - min * min * min) / (max * max * max - min * min * min);
+	};
+	radInterp = rI;
+	radPerc = rP;
 
-	auto l = [&](double max, double min, double d) {
-		return asin(d * sin(max) + (1.0 - d) * sin(min));
+	auto lI = [=](double max, double min, double d) {
+		return asin(d * max + (1.0 - d) * min);
 	};
-	latFunc = l;
+	auto lP = [=](double max, double min, double value) {
+		return (value - min) / (max - min);
+	};
+	latInterp = lI;
+	latPerc = lP;
 }
 
 
 ModifiedEfficient::ModifiedEfficient(double radPower, double latScale) {
 
-	auto r = [&](double max, double min, double d) {
+	auto rI = [=](double max, double min, double d) {
 		return GRID_RAD * pow(d * pow(max, radPower) + (1.0 - d) * pow(min, radPower), 1 / radPower);
 	};
-	radFunc = r;
-
-	auto l = [&](double max, double min, double d) {
-		return latScale * asin(d * (1.0 / latScale) * sin(max) + (1.0 - d) * (1.0 / latScale) * sin(min));
+	auto rP = [=](double max, double min, double value) {
+		return (pow(value, radPower) - pow(min, radPower)) / (pow(max, radPower) - pow(min, radPower));
 	};
-	latFunc = l;
+	radInterp = rI;
+	radPerc = rP;
+
+	auto lI = [=](double max, double min, double d) {
+		double maxD = asin(max);
+		double minD = asin(min);
+
+		return latScale * asin(d * sin(maxD / latScale) + (1.0 - d) * sin(minD / latScale));
+	};
+	auto lP = [=](double max, double min, double value) {
+		double maxD = asin(max);
+		double minD = asin(min);
+		double valueD = asin(value);
+		
+		return (sin(valueD / latScale) - sin(minD / latScale)) / (sin(maxD / latScale) - sin(minD / latScale));
+	};
+	latInterp = lI;
+	latPerc = lP;
 }
-
-
-ModifiedEfficient::ModifiedEfficient(InterpFunc radFunc, InterpFunc latFunc) :
-	radFunc(radFunc),
-	latFunc(latFunc)
-{}
 
 
 Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
@@ -479,7 +490,7 @@ Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
 		double lvMin = 2.0 * lsMin - lsMin * lsMin;
 		double lvMax = 2.0 * lsMax - lsMax * lsMax;
 
-		double latNGP = (latP - lvMin) / (lvMax - lvMin);
+		double latNGP = latPerc(lvMax, lvMin, latP); // (latP - lvMin) / (lvMax - lvMin);
 		latP = latNGP * lsMax + (1.0 - latNGP) * lsMin;
 	}
 	else {
@@ -489,7 +500,7 @@ Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
 	// Handle exact logarithm (radius on split)
 	if (rMax != rMin) {
 		double radPi = 1.0 - radP;
-		double radNGP = (radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
+		double radNGP = radPerc(rMax, rMin, radPi); //(radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
 
 		radP = 1.0 - (radNGP * rMax + (1.0 - radNGP) * rMin);
 	}
@@ -539,7 +550,7 @@ Range ModifiedEfficient::indexToRange(Index index) const {
 	}
 
 	double radMaxNGP = (1.0 - r.radMax - rMin) / (rMax - rMin);
-	double radMinNGP = (1.0 - r.radMin - rMin) / (rMax - rMin);
+	double radMinNG_P = (1.0 - r.radMin - rMin) / (rMax - rMin);
 
 	// Modifier to account for degenerate subdivision
 	int latD = std::min((int)floor(radExp), k);
@@ -559,8 +570,8 @@ Range ModifiedEfficient::indexToRange(Index index) const {
 	double lvMin = 2.0 * lsMin - lsMin * lsMin;
 	double lvMax = 2.0 * lsMax - lsMax * lsMax;
 
-	double latMaxNGP = (r.latMax - lsMin) / (lsMax - lsMin);
-	double latMinNGP = (r.latMin - lsMin) / (lsMax - lsMin);
+	double latMaxNG_P = (r.latMax - lsMin) / (lsMax - lsMin);
+	double latMinNG_P = (r.latMin - lsMin) / (lsMax - lsMin);
 
 	// Modifier to account for degenerate subdivision
 	int lngD = std::min(latD + (int)floor(latExp), k);
@@ -568,14 +579,13 @@ Range ModifiedEfficient::indexToRange(Index index) const {
 	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngD));
 
 	// Put bounds into coordinate domain as opposed to parameter
-	r.radMin = cbrt(radMinNGP * rMax * rMax * rMax + (1.0 - radMinNGP) * rMin * rMin * rMin) * GRID_RAD;
-	if (r.radMin < 0.0) r.radMin = 0.0; // precision issues when min radius is 0
-	r.radMax = cbrt(radMaxNGP * rMax * rMax * rMax + (1.0 - radMaxNGP) * rMin * rMin * rMin) * GRID_RAD;
-	r.latMin = asin(latMinNGP * lvMax + (1.0 - latMinNGP) * lvMin);
+	r.radMin = radInterp(rMax, rMin, radMinNG_P); //cbrt(radMinNGP * rMax * rMax * rMax + (1.0 - radMinNGP) * rMin * rMin * rMin) * GRID_RAD;
+	r.radMax = radInterp(rMax, rMin, radMaxNGP); //cbrt(radMaxNGP * rMax * rMax * rMax + (1.0 - radMaxNGP) * rMin * rMin * rMin) * GRID_RAD;
+	if (r.radMin < 0.0 || isnan(r.radMin)) r.radMin = 0.0; // precision issues when min radius is 0
 
-	double temp = latMaxNGP * lvMax + (1.0 - latMaxNGP) * lvMin;
-	if (temp > 1.0) temp = 1.0; // handle precision issues that result in asin(1.0 + e)
-	r.latMax = asin(temp);
+	r.latMin = latInterp(lvMax, lvMin, latMinNG_P); //asin(latMinNGP * lvMax + (1.0 - latMinNGP) * lvMin);
+	r.latMax = latInterp(lvMax, lvMin, latMaxNG_P);
+	if (isnan(r.latMax)) r.latMax = M_PI_2;
 
 	r.lngMin *= M_PI_2;
 	r.lngMax *= M_PI_2;

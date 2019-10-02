@@ -11,38 +11,42 @@ void Program::testOperations(int n, int k) {
 	std::vector<Index> indices = generateIndicesFromPoints(points, k);
 
 	SimpleOperations simple;
-	SimpleOperations simpleVol(true);
+	SimpleOperations simpleVol(1.7, 1.45);
 	EfficientOperations efficient;
-	ModifiedEfficient efficientVol;
+	ModifiedEfficient efficientVol(1.7, 1.45);
 
 	std::cout << "testing " << n << " times at k = " << k << std::endl;
 
 	int numPtoIErrors = comparePointToIndex(points, k, &simple, &efficient, false);
-	std::cout << "PtoI non: " << numPtoIErrors << std::endl;
+	std::cout << "PtoI non errors: " << numPtoIErrors << std::endl;
 
-	int numVolPtoIErrors = comparePointToIndex(points, k, &simpleVol, &efficientVol, false);
-	std::cout << "PtoI vol: " << numVolPtoIErrors << std::endl;
+	int numVolPtoIErrors = comparePointToIndex(points, k, &simpleVol, &efficientVol, true);
+	std::cout << "PtoI vol errors: " << numVolPtoIErrors << std::endl;
 
 	if (numPtoIErrors == 0) {
 		int numItoRErrors = compareIndexToRange(indices, &simple, &efficient, false);
-		std::cout << "ItoR non: " << numItoRErrors << std::endl;
+		std::cout << "ItoR non errors: " << numItoRErrors << std::endl;
 	}
 	if (numVolPtoIErrors == 0) {
-		int numVolItoRErrors = compareIndexToRange(indices, &simpleVol, &efficientVol, false);
-		std::cout << "ItoR vol: " << numVolItoRErrors << std::endl;
+		int numVolItoRErrors = compareIndexToRange(indices, &simpleVol, &efficientVol, true);
+		std::cout << "ItoR vol errors: " << numVolItoRErrors << std::endl;
 	}
 }
 
 
 void Program::benchmarkAll(int n, int maxK) {
 
-	std::ofstream out("results-10mil.csv");
-	out << "Simple PtoI,Simple Volume PtoI,Efficient PtoI,Efficient Volume PtoI,Simple ItoR,Simple Volume ItoR,Efficient ItoR,Efficient Volume ItoR" << std::endl;
+	std::ofstream out("results-1mil-new.csv");
+	out << "Simple PtoI,Simple Volume PtoI,Simple Mapped PtoI,Efficient PtoI,Efficient Volume PtoI,Efficient Mapped PtoI,";
+	out << "Simple ItoR,Simple Volume ItoR,Simple Mapped ItoR,Efficient ItoR,Efficient Volume ItoR,Efficient Mapped ItoR" << std::endl;
 
 	SimpleOperations simple;
 	SimpleOperations simpleVol(true);
+	SimpleOperations simpleMap(1.7, 1.45);
 	EfficientOperations efficient;
 	ModifiedEfficient efficientVol;
+	ModifiedEfficient efficientMap(1.7, 1.45);
+
 
 	std::vector<Point> points = generateRandomPoints(n);
 
@@ -53,13 +57,17 @@ void Program::benchmarkAll(int n, int maxK) {
 
 		out << timePointToIndex(points, k, &simple) << ",";
 		out << timePointToIndex(points, k, &simpleVol) << ",";
+		out << timePointToIndex(points, k, &simpleMap) << ",";
 		out << timePointToIndex(points, k, &efficient) << ",";
 		out << timePointToIndex(points, k, &efficientVol) << ",";
+		out << timePointToIndex(points, k, &efficientMap) << ",";
 
 		out << timeIndexToRange(indices, &simple) << ",";
 		out << timeIndexToRange(indices, &simpleVol) << ",";
+		out << timeIndexToRange(indices, &simpleMap) << ",";
 		out << timeIndexToRange(indices, &efficient) << ",";
-		out << timeIndexToRange(indices, &efficientVol) << std::endl;
+		out << timeIndexToRange(indices, &efficientVol) << ",";
+		out << timeIndexToRange(indices, &efficientMap) << std::endl;
 
 		std::cout << " done" << std::endl;
 	}

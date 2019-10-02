@@ -21,6 +21,7 @@ constexpr double GRID_RAD = 1.0;
 typedef uint_fast64_t Index;
 typedef uint_fast32_t DimIndex;
 typedef std::function<double(double, double, double)> InterpFunc;
+typedef std::function<double(double, double, double)> PercFunc;
 typedef std::function<double(double, double, SdogCellType)> SplitFunc;
 
 
@@ -84,14 +85,13 @@ public:
 	SimpleOperations();
 	SimpleOperations(bool volume);
 	SimpleOperations(double radPower, double latScale);
-	SimpleOperations(SplitFunc radFunc, SplitFunc latFunc);
 
 	Index pointToIndex(const Point& p, int k) const;
 	Range indexToRange(Index index) const;
 
 private:
-	SplitFunc radFunc;
-	SplitFunc latFunc;
+	SplitFunc radSplit;
+	SplitFunc latSplit;
 
 };
 
@@ -109,12 +109,14 @@ class ModifiedEfficient : public IndexOperations {
 public:
 	ModifiedEfficient();
 	ModifiedEfficient(double radPower, double latScale);
-	ModifiedEfficient(InterpFunc radFunc, InterpFunc latFunc);
 
 	Index pointToIndex(const Point& p, int k) const;
 	Range indexToRange(Index index) const;
 
 private:
-	InterpFunc radFunc;
-	InterpFunc latFunc;
+	InterpFunc radInterp;
+	InterpFunc latInterp;
+
+	InterpFunc radPerc;
+	InterpFunc latPerc;
 };
