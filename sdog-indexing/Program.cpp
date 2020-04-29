@@ -20,7 +20,7 @@ void Program::testOperations(int n, int k) {
 	int numPtoIErrors = comparePointToIndex(points, k, &simple, &efficient, false);
 	std::cout << "PtoI non errors: " << numPtoIErrors << std::endl;
 
-	int numVolPtoIErrors = comparePointToIndex(points, k, &simpleVol, &efficientVol, true);
+	int numVolPtoIErrors = comparePointToIndex(points, k, &simpleVol, &efficientVol, false);
 	std::cout << "PtoI vol errors: " << numVolPtoIErrors << std::endl;
 
 	if (numPtoIErrors == 0) {
@@ -28,7 +28,7 @@ void Program::testOperations(int n, int k) {
 		std::cout << "ItoR non errors: " << numItoRErrors << std::endl;
 	}
 	if (numVolPtoIErrors == 0) {
-		int numVolItoRErrors = compareIndexToRange(indices, &simpleVol, &efficientVol, true);
+		int numVolItoRErrors = compareIndexToRange(indices, &simpleVol, &efficientVol, false);
 		std::cout << "ItoR vol errors: " << numVolItoRErrors << std::endl;
 	}
 }
@@ -36,38 +36,58 @@ void Program::testOperations(int n, int k) {
 
 void Program::benchmarkAll(int n, int maxK) {
 
-	std::ofstream out("results-1mil-new.csv");
-	out << "Simple PtoI,Simple Volume PtoI,Simple Mapped PtoI,Efficient PtoI,Efficient Volume PtoI,Efficient Mapped PtoI,";
-	out << "Simple ItoR,Simple Volume ItoR,Simple Mapped ItoR,Efficient ItoR,Efficient Volume ItoR,Efficient Mapped ItoR" << std::endl;
+	std::ofstream out("1mil-run2.csv");
+	out << "Efficient PtoI,Efficient Volume PtoI,Efficient Mapped PtoI,Simple PtoI,Simple Volume PtoI,Simple Mapped PtoI,";
+	out << "Efficient ItoR,Efficient Volume ItoR,Efficient Mapped ItoR,Simple ItoR,Simple Volume ItoR,Simple Mapped ItoR" << std::endl;
 
 	SimpleOperations simple;
 	SimpleOperations simpleVol(true);
-	SimpleOperations simpleMap(1.7, 1.45);
+	SimpleOperations simpleMap(2.0, 1.45);
 	EfficientOperations efficient;
 	ModifiedEfficient efficientVol;
-	ModifiedEfficient efficientMap(1.7, 1.45);
+	ModifiedEfficient efficientMap(2.0, 1.45);
 
 
 	std::vector<Point> points = generateRandomPoints(n);
+
+	// warm up cache
+	for (int k = 15; k <= 17; k++) {
+
+		std::vector<Index> indices = generateIndicesFromPoints(points, k);
+
+		timePointToIndex(points, k, &efficient);
+		timePointToIndex(points, k, &efficientVol);
+		timePointToIndex(points, k, &efficientMap);
+		timePointToIndex(points, k, &simple);
+		timePointToIndex(points, k, &simpleVol);
+		timePointToIndex(points, k, &simpleMap);
+
+		timeIndexToRange(indices, &efficient);
+		timeIndexToRange(indices, &efficientVol);
+		timeIndexToRange(indices, &efficientMap);
+		timeIndexToRange(indices, &simple);
+		timeIndexToRange(indices, &simpleVol);
+		timeIndexToRange(indices, &simpleMap);
+	}
 
 	for (int k = 1; k <= maxK; k++) {
 
 		std::vector<Index> indices = generateIndicesFromPoints(points, k);
 		std::cout << "starting " << k << "...";
 
-		out << timePointToIndex(points, k, &simple) << ",";
-		out << timePointToIndex(points, k, &simpleVol) << ",";
-		out << timePointToIndex(points, k, &simpleMap) << ",";
 		out << timePointToIndex(points, k, &efficient) << ",";
 		out << timePointToIndex(points, k, &efficientVol) << ",";
 		out << timePointToIndex(points, k, &efficientMap) << ",";
+		out << timePointToIndex(points, k, &simple) << ",";
+		out << timePointToIndex(points, k, &simpleVol) << ",";
+		out << timePointToIndex(points, k, &simpleMap) << ",";
 
-		out << timeIndexToRange(indices, &simple) << ",";
-		out << timeIndexToRange(indices, &simpleVol) << ",";
-		out << timeIndexToRange(indices, &simpleMap) << ",";
 		out << timeIndexToRange(indices, &efficient) << ",";
 		out << timeIndexToRange(indices, &efficientVol) << ",";
 		out << timeIndexToRange(indices, &efficientMap) << std::endl;
+		out << timeIndexToRange(indices, &simple) << ",";
+		out << timeIndexToRange(indices, &simpleVol) << ",";
+		out << timeIndexToRange(indices, &simpleMap) << ",";
 
 		std::cout << " done" << std::endl;
 	}

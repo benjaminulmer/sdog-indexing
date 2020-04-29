@@ -6,6 +6,10 @@
 #include <cmath>
 
 
+double logB(double arg, double base) {
+	return log(arg) / log(base);
+}
+
 std::ostream& operator<<(std::ostream& os, const Point& p) {
 	os << p.rad << ", " << p.lat << ", " << p.lng;
 	return os;
@@ -347,22 +351,112 @@ Range SimpleOperations::indexToRange(Index index) const {
 }
 
 
+ModifiedEfficient::ModifiedEfficient() {
+
+	radInterpFunc = [=](double max, double min, double d) {
+		return cbrt(d * max * max * max + (1.0 - d) * min * min * min);
+	};
+	radPercFunc = [=](double max, double min, double value) {
+		return (value * value * value - min * min * min) / (max * max * max - min * min * min);
+	};
+
+	latInterpFunc = [=](double max, double min, double d) {
+		return asin(d * max + (1.0 - d) * min);
+	};
+	latPercFunc = [=](double max, double min, double value) {
+		return (value - min) / (max - min);
+	};
+}
+
+
+ModifiedEfficient::ModifiedEfficient(double radPower, double latScale) {
+
+	radInterpFunc = [=](double max, double min, double d) {
+		return pow(d * pow(max, radPower) + (1.0 - d) * pow(min, radPower), 1 / radPower);
+	};
+	radPercFunc = [=](double max, double min, double value) {
+		return (pow(value, radPower) - pow(min, radPower)) / (pow(max, radPower) - pow(min, radPower));
+	};
+
+	latInterpFunc = [=](double max, double min, double d) {
+		double maxD = asin(max);
+		double minD = asin(min);
+
+		return latScale * asin(d * sin(maxD / latScale) + (1.0 - d) * sin(minD / latScale));
+	};
+	latPercFunc = [=](double max, double min, double value) {
+		double maxD = asin(max);
+		double minD = asin(min);
+		double valueD = asin(value);
+		
+		return (sin(valueD / latScale) - sin(minD / latScale)) / (sin(maxD / latScale) - sin(minD / latScale));
+	};
+}
+
+
 Index EfficientOperations::pointToIndex(const Point& p, int k) const {
 
-	// Find percentage distance in each coordinate
-	double radP = 1.0 - (p.rad / GRID_RAD);
-	double latP = p.lat / M_PI_2;
-	double lngP = p.lng / M_PI_2;
+	// Percentage distance in each coordinate
+	double radPerc = p.rad / GRID_RAD;
+	double latPerc = p.lat / M_PI_2;
+	double lngPerc = p.lng / M_PI_2;
 
-	// Modifiers to account for degenerate subdivision
-	int latD = std::min((int)floor(-log2(1.0 - radP)), k);
-	int lngD = std::min(latD + (int)floor(-log2(1.0 - latP)), k);
+	int shell = floor(logB(radPerc, 0.5));
+	int zone = floor(logB(1.0 - latPerc, 0.5));
 
-	// Find index in each coordinate
+	// Modifiers to account for semiregular degenerate refinement
+	int latMod = std::min(shell, k);
+	int lngMod = std::min(latMod + zone, k);
+
+	// Index in each coordinate
 	// 1ll << k == 2^k
-	DimIndex radI = (DimIndex)floor((1ll << k) * radP);
-	DimIndex latI = (DimIndex)floor((1ll << (k - latD)) * latP);
-	DimIndex lngI = (DimIndex)floor((1ll << (k - lngD)) * lngP);
+	DimIndex radI = (DimIndex)floor((1ll << k) * (1.0 - radPerc));
+	DimIndex latI = (DimIndex)floor((1ll << (k - latMod)) * latPerc);
+	DimIndex lngI = (DimIndex)floor((1ll << (k - lngMod)) * lngPerc);
+
+	// Interleave Morton Code and set 1 bit at beginning to mark start of index
+	return libmorton::morton3D_64_encode(lngI, latI, radI) + (1ll << (k * 3));
+}
+
+
+Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
+
+	// Percentage distance in each coordinate
+	double radPerc = p.rad / GRID_RAD;
+	double latPerc = sin(p.lat);
+	double lngPerc = p.lng / M_PI_2;
+
+	int shell = floor(logB(radPerc, 0.5));
+	int zone = floor(logB(1.0 - latPerc, 0.25));
+
+	// Modifiers to account for semiregular degenerate refinement
+	int latMod = std::min(shell, k);
+	int lngMod = std::min(latMod + zone, k);
+
+	// Uppers and lowers for mapping technique
+	double radUpp = pow(0.5, shell);
+	double radLow = pow(0.5, shell + 1);
+
+	double latLowG = 1.0 - (pow(0.5, zone));
+	double latUppG = 1.0 - (pow(0.5, zone + 1));
+
+	double latLowP = 1.0 - (pow(0.25, zone));
+	double latUppP = 1.0 - (pow(0.25, zone + 1));
+
+
+	// Map from physical to grid domain
+	double latD = latPercFunc(latUppP, latLowP, latPerc);
+	latPerc = latD * latUppG + (1.0 - latD) * latLowG;
+
+	double radD = radPercFunc(radUpp, radLow, radPerc);
+	radPerc = radD * radUpp + (1.0 - radD) * radLow;
+
+
+	// Index in each coordinate
+	// 1ll << k == 2^k
+	DimIndex radI = (DimIndex)floor((1ll << k) * (1.0 - radPerc));
+	DimIndex latI = (DimIndex)floor((1ll << (k - latMod)) * latPerc);
+	DimIndex lngI = (DimIndex)floor((1ll << (k - lngMod)) * lngPerc);
 
 	// Interleave Morton Code and set 1 bit at beginning to mark start of index
 	return libmorton::morton3D_64_encode(lngI, latI, radI) + (1ll << (k * 3));
@@ -371,6 +465,8 @@ Index EfficientOperations::pointToIndex(const Point& p, int k) const {
 
 Range EfficientOperations::indexToRange(Index index) const {
 
+	Range r;
+
 	// Find width of index
 	Index copy = index;
 	int width = 0;
@@ -378,32 +474,37 @@ Range EfficientOperations::indexToRange(Index index) const {
 		width++;
 	}
 
+	// Refinement level is one third width
+	int k = width / 3;
+
+	// Remove leading bit
 	index ^= 1ll << width;
 
+	// Unweave Morton Code 
 	DimIndex radI, latI, lngI;
 	libmorton::morton3D_64_decode(index, lngI, latI, radI);
 
-	Range r;
-	int k = width / 3;
+	// Calculate radius
+	r.radMax = 1.0 - (radI / (double)(1ll << k));
+	r.radMin = 1.0 - ((radI + 1.0) / (double)(1ll << k));
 
-	r.radMax = radI / (double)(1ll << k);
-	r.radMin = (radI + 1.0) / (double)(1ll << k);
+	// Calculate latitude
+	int shell = floor(logB(r.radMax, 0.5));
+	int latMod = std::min(shell, k); // Modifier to account for semiregular degenerate refinement
 
-	// Modifier to account for degenerate subdivision
-	int latD = std::min((int)floor(-log2(1.0 - r.radMax)), k);
+	r.latMin = latI / (double)(1ll << (k - latMod));
+	r.latMax = (latI + 1.0) / (double)(1ll << (k - latMod));
 
-	r.latMin = latI / (double)(1ll << (k - latD));
-	r.latMax = (latI + 1.0) / (double)(1ll << (k - latD));
+	// Calculate longitude
+	int zone = floor(logB(1.0 - r.latMin, 0.5));
+	int lngMod = std::min(latMod + zone, k); // Modifier to account for semiregular degenerate refinement
 
-	// Modifier to account for degenerate subdivision
-	int lngD = std::min(latD + (int)floor(-log2(1.0 - r.latMin)), k);
-
-	r.lngMin = lngI / (double)(1ll << (k - lngD));
-	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngD));
+	r.lngMin = lngI / (double)(1ll << (k - lngMod));
+	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngMod));
 
 	// Put bounds into coordinate domain as opposed to parameter
-	r.radMin = (1.0 - r.radMin) * GRID_RAD;
-	r.radMax = (1.0 - r.radMax) * GRID_RAD;
+	r.radMin *= GRID_RAD;
+	r.radMax *= GRID_RAD;
 	r.latMin *= M_PI_2;
 	r.latMax *= M_PI_2;
 	r.lngMin *= M_PI_2;
@@ -413,113 +514,9 @@ Range EfficientOperations::indexToRange(Index index) const {
 }
 
 
-ModifiedEfficient::ModifiedEfficient() {
-
-	auto rI = [=](double max, double min, double d) {
-		return GRID_RAD * cbrt(d * max * max * max + (1.0 - d) * min * min * min);
-	};
-	auto rP = [=](double max, double min, double value) {
-		return (value * value * value - min * min * min) / (max * max * max - min * min * min);
-	};
-	radInterp = rI;
-	radPerc = rP;
-
-	auto lI = [=](double max, double min, double d) {
-		return asin(d * max + (1.0 - d) * min);
-	};
-	auto lP = [=](double max, double min, double value) {
-		return (value - min) / (max - min);
-	};
-	latInterp = lI;
-	latPerc = lP;
-}
-
-
-ModifiedEfficient::ModifiedEfficient(double radPower, double latScale) {
-
-	auto rI = [=](double max, double min, double d) {
-		return GRID_RAD * pow(d * pow(max, radPower) + (1.0 - d) * pow(min, radPower), 1 / radPower);
-	};
-	auto rP = [=](double max, double min, double value) {
-		return (pow(value, radPower) - pow(min, radPower)) / (pow(max, radPower) - pow(min, radPower));
-	};
-	radInterp = rI;
-	radPerc = rP;
-
-	auto lI = [=](double max, double min, double d) {
-		double maxD = asin(max);
-		double minD = asin(min);
-
-		return latScale * asin(d * sin(maxD / latScale) + (1.0 - d) * sin(minD / latScale));
-	};
-	auto lP = [=](double max, double min, double value) {
-		double maxD = asin(max);
-		double minD = asin(min);
-		double valueD = asin(value);
-		
-		return (sin(valueD / latScale) - sin(minD / latScale)) / (sin(maxD / latScale) - sin(minD / latScale));
-	};
-	latInterp = lI;
-	latPerc = lP;
-}
-
-
-Index ModifiedEfficient::pointToIndex(const Point& p, int k) const {
-
-	// Find percentage distance in each coordinate
-	double radP = 1.0 - (p.rad / GRID_RAD);
-	double latP = sin(p.lat);
-	double lngP = p.lng / M_PI_2;
-
-	double radExp = -log2(1.0 - radP);
-	double latExp = -log2(sqrt(1.0 - latP));
-
-	// Modifiers to account for degenerate subdivision
-	int latD = std::min((int)floor(radExp), k);
-	int lngD = std::min(latD + (int)floor(latExp), k);
-
-	// Max and mins for mapping technique
-	double rMax = pow(2.0, -floor(radExp));
-	double rMin = pow(2.0, -ceil(radExp));
-
-	double lsMin = 1.0 - (pow(2.0, -floor(latExp)));
-	double lsMax = 1.0 - (pow(2.0, -ceil(latExp)));
-
-	// Handle exact logarithm (latitude on split)
-	if (lsMax != lsMin) {
-		double lvMin = 2.0 * lsMin - lsMin * lsMin;
-		double lvMax = 2.0 * lsMax - lsMax * lsMax;
-
-		double latNGP = latPerc(lvMax, lvMin, latP); // (latP - lvMin) / (lvMax - lvMin);
-		latP = latNGP * lsMax + (1.0 - latNGP) * lsMin;
-	}
-	else {
-		latP = lsMax;
-	}
-
-	// Handle exact logarithm (radius on split)
-	if (rMax != rMin) {
-		double radPi = 1.0 - radP;
-		double radNGP = radPerc(rMax, rMin, radPi); //(radPi * radPi * radPi - rMin * rMin * rMin) / (rMax * rMax * rMax - rMin * rMin * rMin);
-
-		radP = 1.0 - (radNGP * rMax + (1.0 - radNGP) * rMin);
-	}
-	else {
-		radP = rMax;
-	}
-
-	// Find index in each coordinate
-	// 1ll << k == 2^k
-	DimIndex radI = (DimIndex)floor((1ll << k) * radP);
-	DimIndex latI = (DimIndex)floor((1ll << (k - latD)) * latP);
-	DimIndex lngI = (DimIndex)floor((1ll << (k - lngD)) * lngP);
-
-	// Interleave Morton Code and set 1 bit at beginning to mark start of index
-	return libmorton::morton3D_64_encode(lngI, latI, radI) + (1ll << (k * 3));
-}
-
-
 Range ModifiedEfficient::indexToRange(Index index) const {
+
+	Range r;
 
 	// Find width of index
 	Index copy = index;
@@ -528,63 +525,58 @@ Range ModifiedEfficient::indexToRange(Index index) const {
 		width++;
 	}
 
+	// Refinement level is one third width
+	int k = width / 3;
+
+	// Remove leading bit
 	index ^= 1ll << width;
 
+	// Unweave Morton Code 
 	DimIndex radI, latI, lngI;
 	libmorton::morton3D_64_decode(index, lngI, latI, radI);
 
-	Range r;
-	int k = width / 3;
+	// Calculate radius
+	r.radMax = 1.0 - (radI / (double)(1ll << k));
+	r.radMin = 1.0 - ((radI + 1.0) / (double)(1ll << k));
 
-	r.radMax = radI / (double)(1ll << k);
-	r.radMin = (radI + 1.0) / (double)(1ll << k);
 
-	// Max and min for mapping technique
-	double radExp = -log2(1.0 - r.radMax);
-	double rMax = pow(2.0, -floor(radExp));
-	double rMin = pow(2.0, -ceil(radExp));
+	int shell = floor(logB(r.radMax, 0.5));
 
-	// Handle exact logarithm (max radius on split)
-	if (rMax == rMin) {
-		rMin = pow(2.0, -(ceil(radExp) + 1.0));
-	}
+	// Uppers and lowers for mapping technique
+	double radUpp = pow(0.5, shell);
+	double radLow = pow(0.5, shell + 1);
 
-	double radMaxNGP = (1.0 - r.radMax - rMin) / (rMax - rMin);
-	double radMinNG_P = (1.0 - r.radMin - rMin) / (rMax - rMin);
+	double radMaxD = (r.radMax - radLow) / (radUpp - radLow);
+	double radMinD = (r.radMin - radLow) / (radUpp - radLow);
 
-	// Modifier to account for degenerate subdivision
-	int latD = std::min((int)floor(radExp), k);
+	// Modifier to account for semiregular degenerate refinement
+	int latD = std::min((int)floor(shell), k);
 	r.latMin = latI / (double)(1ll << (k - latD));
 	r.latMax = (latI + 1.0) / (double)(1ll << (k - latD));
 
-	// Max and min for mapping technique
-	double latExp = -log2(1.0 - r.latMin);
-	double lsMin = 1.0 - (pow(2.0, -floor(latExp)));
-	double lsMax = 1.0 - (pow(2.0, -ceil(latExp)));
+	// Uppers and lowers for mapping technique
+	int zone = floor(logB(1.0 - r.latMin, 0.5));
+	double latLowG = 1.0 - (pow(0.5, zone));
+	double latUppG = 1.0 - (pow(0.5, zone + 1));
 
-	// Handle exact logarithm (min latitude on split)
-	if (lsMax == lsMin) {
-		lsMax = 1.0 - (pow(2.0, -(ceil(latExp) + 1.0)));
-	}
+	double latLowP = 1.0 - (pow(0.25, zone));
+	double latUppP = 1.0 - (pow(0.25, zone + 1));
 
-	double lvMin = 2.0 * lsMin - lsMin * lsMin;
-	double lvMax = 2.0 * lsMax - lsMax * lsMax;
-
-	double latMaxNG_P = (r.latMax - lsMin) / (lsMax - lsMin);
-	double latMinNG_P = (r.latMin - lsMin) / (lsMax - lsMin);
+	double latMaxD = (r.latMax - latLowG) / (latUppG - latLowG);
+	double latMinD = (r.latMin - latLowG) / (latUppG - latLowG);
 
 	// Modifier to account for degenerate subdivision
-	int lngD = std::min(latD + (int)floor(latExp), k);
+	int lngD = std::min(latD + (int)floor(zone), k);
 	r.lngMin = lngI / (double)(1ll << (k - lngD));
 	r.lngMax = (lngI + 1.0) / (double)(1ll << (k - lngD));
 
 	// Put bounds into coordinate domain as opposed to parameter
-	r.radMin = radInterp(rMax, rMin, radMinNG_P); //cbrt(radMinNGP * rMax * rMax * rMax + (1.0 - radMinNGP) * rMin * rMin * rMin) * GRID_RAD;
-	r.radMax = radInterp(rMax, rMin, radMaxNGP); //cbrt(radMaxNGP * rMax * rMax * rMax + (1.0 - radMaxNGP) * rMin * rMin * rMin) * GRID_RAD;
+	r.radMin = GRID_RAD * radInterpFunc(radUpp, radLow, radMinD);
+	r.radMax = GRID_RAD * radInterpFunc(radUpp, radLow, radMaxD);
 	if (r.radMin < 0.0 || isnan(r.radMin)) r.radMin = 0.0; // precision issues when min radius is 0
 
-	r.latMin = latInterp(lvMax, lvMin, latMinNG_P); //asin(latMinNGP * lvMax + (1.0 - latMinNGP) * lvMin);
-	r.latMax = latInterp(lvMax, lvMin, latMaxNG_P);
+	r.latMin = latInterpFunc(latUppP, latLowP, latMinD);
+	r.latMax = latInterpFunc(latUppP, latLowP, latMaxD);
 	if (isnan(r.latMax)) r.latMax = M_PI_2;
 
 	r.lngMin *= M_PI_2;

@@ -15,7 +15,7 @@ enum class SdogCellType {
 
 
 constexpr unsigned int INDEX_WIDTH = 64;
-constexpr double GRID_RAD = 1.0;
+constexpr double GRID_RAD = 6371.0;
 
 
 typedef uint_fast64_t Index;
@@ -114,9 +114,9 @@ public:
 	Range indexToRange(Index index) const;
 
 private:
-	InterpFunc radInterp;
-	InterpFunc latInterp;
+	InterpFunc radInterpFunc;
+	InterpFunc latInterpFunc;
 
-	InterpFunc radPerc;
-	InterpFunc latPerc;
+	InterpFunc radPercFunc;
+	InterpFunc latPercFunc;
 };
